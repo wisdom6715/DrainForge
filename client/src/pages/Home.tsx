@@ -43,7 +43,18 @@ export default function Home() {
   };
 
   const detectLocation = () => { if (!navigator.geolocation) return toast.error("Location is unavailable", { description: "You can still submit with the pilot location." }); navigator.geolocation.getCurrentPosition((position) => setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude, address: "Current location", accuracy: position.coords.accuracy }), () => toast.info("Using pilot location", { description: "Location permission was not granted." })); };
-  const submitReport = async () => { try { const draftReference = `draft-${crypto.randomUUID()}`; const evidencePaths = (await Promise.all(evidenceFiles.slice(0, 3).map((file) => uploadEvidence(file, draftReference)))).filter(Boolean); const result = await createReport({ category: category.toLowerCase().replaceAll(" ", "_") as never, severity: severity as never, description, latitude: location.latitude, longitude: location.longitude, address: location.address, location_accuracy: location.accuracy, evidence_paths: evidencePaths }); setTrackingReference(result.reference); setSubmitted(true); toast.success("Report received", { description: `Your acknowledgement ${result.reference} is ready to track.` }); } catch { toast.error("Report could not be sent", { description: "Please try again when the service is available." }); } };
+  const submitReport = async () => 
+    { 
+      try { const draftReference = `draft-${crypto.randomUUID()}`; 
+        const evidencePaths = (
+          await Promise.all(evidenceFiles.slice(0, 3).map((file) => uploadEvidence(file, draftReference)))).filter(Boolean); 
+        const result = await createReport({ category: category.toLowerCase().replaceAll(" ", "_") as never, severity: severity as never, description, latitude: location.latitude, longitude: location.longitude, address: location.address, location_accuracy: location.accuracy, evidence_paths: evidencePaths }); 
+        setTrackingReference(result.reference); setSubmitted(true); toast.success("Report received", { description: `Your acknowledgement ${result.reference} is ready to track.` }); 
+      } 
+        catch { toast.error("Report could not be sent", { description: "Please try again when the service is available." }); 
+    
+      } 
+    };
 
   return (
     <div className="min-h-screen overflow-hidden bg-[#fbfaf8] text-[#403f58]">

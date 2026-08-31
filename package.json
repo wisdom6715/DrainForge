@@ -10,17 +10,16 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-    "start": "NODE_ENV=production node dist/index.js",
+    "dev": "cross-env NODE_ENV=development tsx watch server/_core/index.ts",    "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "start": "cross-env NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
-    "dev:web": "pnpm --dir apps/web dev",
+    "dev:web": "vite",
     "dev:api": "python -m uvicorn app.main:app --reload --app-dir apps/api",
-    "dev:all": "concurrently \"pnpm dev\" \"pnpm dev:api\"",
-    "build:web": "pnpm --dir apps/web build",
+    "dev:all": "concurrently \"pnpm dev:web\" \"pnpm dev\"",
+    "build:web": "vite build",
     "test:contracts": "vitest run server/*.test.ts packages/shared/src/*.test.ts"
   },
   "dependencies": {
