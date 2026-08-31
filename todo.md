@@ -1,0 +1,28 @@
+# DrainForge TODO
+
+- [x] Establish a documented npm/pnpm monorepo with separate Next.js web and FastAPI service apps.
+- [x] Add shared types, enums, validation contracts, and configuration packages.
+- [x] Add root workspace scripts for install, local development, checks, tests, and builds.
+- [x] Build the calm resident landing experience with lavender, blush, mint gradients and editorial geometric accents.
+- [x] Build corridor reports view for UNILAG, Akoka, Bariga, and Iwaya.
+- [x] Build resident report flow with category, severity, description, geolocation, and optional photo evidence.
+- [x] Build report submission confirmation and tracking reference experience.
+- [x] Build role-gated authority dashboard with operational summaries.
+- [x] Add authority report filtering, prioritization, review, assignment, and status updates.
+- [x] Add Supabase authentication integration and role-aware access control.
+- [x] Add relational Supabase data models and migrations for users, reports, evidence, status history, teams, and sites.
+- [x] Add Supabase Storage references for report evidence without storing file bytes in relational columns.
+- [x] Implement FastAPI service contracts consumed by the web application.
+- [x] Implement automated acknowledgements and status-change alerts for residents and authority stakeholders.
+- [x] Add setup, environment, local development, testing, and deployment documentation.
+- [x] Add unit and integration tests for shared contracts, API behavior, role gating, reporting, status changes, and notifications.
+- [x] Run type checks, tests, production builds, and visual verification.
+- [x] Review this todo.md and mark all completed items before creating the final checkpoint.
+- [x] Fully scaffold and verify the standalone Next.js app, including tsconfig and successful build/start validation.
+- [x] Add a shared configuration package consumed by both standalone apps.
+- [x] Replace hardcoded report data and tracking IDs with API-backed integration boundaries.
+- [x] Complete severity input, browser geolocation capture, and real Supabase Storage upload wiring in the resident flow.
+- [x] Implement real Supabase authentication/session handling and enforce role-gated authority access in frontend and API.
+- [x] Wire notification creation into report creation and verification/resolution flows, including authority stakeholder routing.
+- [x] Install/run Python API tests and add notification coverage.
+- [x] Run standalone Next.js and FastAPI production build checks.

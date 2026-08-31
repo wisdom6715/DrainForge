@@ -1,0 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+@custom-variant dark (&:is(.dark *));
+@theme inline {
+  --font-sans: 'DM Sans', sans-serif;
+  --font-serif: 'Newsreader', Georgia, serif;
+  --font-mono: 'DM Mono', monospace;
+  --radius-sm: calc(var(--radius) - 4px); --radius-md: calc(var(--radius) - 2px); --radius-lg: var(--radius); --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background); --color-foreground: var(--foreground); --color-card: var(--card); --color-card-foreground: var(--card-foreground); --color-popover: var(--popover); --color-popover-foreground: var(--popover-foreground); --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground); --color-secondary: var(--secondary); --color-secondary-foreground: var(--secondary-foreground); --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground); --color-accent: var(--accent); --color-accent-foreground: var(--accent-foreground); --color-destructive: var(--destructive); --color-destructive-foreground: var(--destructive-foreground); --color-border: var(--border); --color-input: var(--input); --color-ring: var(--ring);
+}
+:root { --primary: #403f58; --primary-foreground: #fbfaf8; --background: #fbfaf8; --foreground: #403f58; --card: #fffdfa; --card-foreground: #403f58; --popover: #fffdfa; --popover-foreground: #403f58; --secondary: #f3f0f6; --secondary-foreground: #5b5872; --muted: #f3f0f6; --muted-foreground: #858096; --accent: #eee6f7; --accent-foreground: #403f58; --destructive: #b96783; --destructive-foreground: #fff; --border: #e5e0e8; --input: #e5e0e8; --ring: #a896bc; --radius: 0.85rem; }
+.dark { --background: #242335; --foreground: #f8f4fa; --card: #302e45; --card-foreground: #f8f4fa; --popover: #302e45; --popover-foreground: #f8f4fa; --primary: #eee6f7; --primary-foreground: #403f58; --secondary: #3b3851; --secondary-foreground: #f8f4fa; --muted: #3b3851; --muted-foreground: #c9c7d4; --accent: #4a4562; --accent-foreground: #f8f4fa; --border: #514c66; --input: #514c66; --ring: #c7b8d8; }
+@layer base { * { @apply border-border outline-ring/50; } body { @apply bg-background text-foreground; font-family: 'DM Sans', sans-serif; } button:not(:disabled), [role="button"]:not([aria-disabled="true"]), a[href] { @apply cursor-pointer; } button { transition: transform 160ms cubic-bezier(.23,1,.32,1), background-color 160ms ease, color 160ms ease; } button:active:not(:disabled) { transform: scale(.97); } }
+@layer components { .container { width: 100%; margin-inline: auto; padding-inline: 1rem; } .flex { min-height: 0; min-width: 0; } .eyebrow { @apply text-[10px] font-semibold uppercase tracking-[.26em] text-[#8d7ea8]; } .editorial-corner { position: absolute; width: 42px; height: 42px; border-color: rgba(141,126,168,.34); } .editorial-corner--tl { left: -11px; top: -11px; border-left: 1px solid; border-top: 1px solid; } }
+@media (min-width: 640px) { .container { padding-inline: 1.5rem; } }
+@media (min-width: 1024px) { .container { max-width: 1280px; padding-inline: 2rem; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
