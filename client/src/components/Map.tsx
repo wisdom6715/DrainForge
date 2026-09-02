@@ -76,7 +76,7 @@
 
 /// <reference types="@types/google.maps" />
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePersistFn } from "@/hooks/usePersistFn";
 import { cn } from "@/lib/utils";
 
@@ -86,27 +86,61 @@ declare global {
   }
 }
 
-const API_KEY = import.meta.env.VITE_FRONTEND_FORGE_API_KEY;
+// A direct Google Maps API key (your own, from the Google Cloud Console —
+// Maps JavaScript API + Geocoding API enabled) takes priority. Falls back
+// to the platform proxy this project was originally scaffolded with, for
+// environments where that proxy is actually reachable.
+const DIRECT_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+const FORGE_API_KEY = import.meta.env.VITE_FRONTEND_FORGE_API_KEY as string | undefined;
 const FORGE_BASE_URL =
-  import.meta.env.VITE_FRONTEND_FORGE_API_URL ||
+  (import.meta.env.VITE_FRONTEND_FORGE_API_URL as string | undefined) ||
   "https://forge.butterfly-effect.dev";
 const MAPS_PROXY_URL = `${FORGE_BASE_URL}/v1/maps/proxy`;
 
-function loadMapScript() {
-  return new Promise(resolve => {
+let mapsScriptPromise: Promise<void> | null = null;
+
+function buildScriptUrl(): string | null {
+  if (DIRECT_API_KEY) {
+    return `https://maps.googleapis.com/maps/api/js?key=${DIRECT_API_KEY}&v=weekly&libraries=marker,places,geocoding,geometry`;
+  }
+  if (FORGE_API_KEY) {
+    return `${MAPS_PROXY_URL}/maps/api/js?key=${FORGE_API_KEY}&v=weekly&libraries=marker,places,geocoding,geometry`;
+  }
+  return null;
+}
+
+function loadMapScript(): Promise<void> {
+  if (mapsScriptPromise) return mapsScriptPromise;
+
+  mapsScriptPromise = new Promise((resolve, reject) => {
+    if (window.google?.maps) {
+      resolve();
+      return;
+    }
+    const src = buildScriptUrl();
+    if (!src) {
+      reject(new Error("No Google Maps API key configured (set VITE_GOOGLE_MAPS_API_KEY)."));
+      return;
+    }
     const script = document.createElement("script");
-    script.src = `${MAPS_PROXY_URL}/maps/api/js?key=${API_KEY}&v=weekly&libraries=marker,places,geocoding,geometry`;
+    script.src = src;
     script.async = true;
     script.crossOrigin = "anonymous";
     script.onload = () => {
-      resolve(null);
       script.remove(); // Clean up immediately
+      if (window.google?.maps) resolve();
+      else reject(new Error("Google Maps script loaded but window.google.maps is unavailable."));
     };
     script.onerror = () => {
-      console.error("Failed to load Google Maps script");
+      reject(new Error("Failed to load the Google Maps script."));
     };
     document.head.appendChild(script);
+  }).catch((error) => {
+    mapsScriptPromise = null; // allow retrying (e.g. after fixing the env var + reload)
+    throw error;
   });
+
+  return mapsScriptPromise;
 }
 
 interface MapViewProps {
@@ -114,6 +148,7 @@ interface MapViewProps {
   initialCenter?: google.maps.LatLngLiteral;
   initialZoom?: number;
   onMapReady?: (map: google.maps.Map) => void;
+  onError?: (error: Error) => void;
 }
 
 export function MapView({
@@ -121,12 +156,21 @@ export function MapView({
   initialCenter = { lat: 37.7749, lng: -122.4194 },
   initialZoom = 12,
   onMapReady,
+  onError,
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const init = usePersistFn(async () => {
-    await loadMapScript();
+    try {
+      await loadMapScript();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load Google Maps.";
+      setLoadError(message);
+      onError?.(error instanceof Error ? error : new Error(message));
+      return;
+    }
     if (!mapContainer.current) {
       console.error("Map container not found");
       return;
@@ -148,6 +192,17 @@ export function MapView({
   useEffect(() => {
     init();
   }, [init]);
+
+  if (loadError) {
+    return (
+      <div className={cn("grid w-full h-[500px] place-items-center bg-[#f3f0f6] px-6 text-center text-sm text-[#858096]", className)}>
+        <div>
+          <p className="font-medium text-[#5b5872]">Map couldn't load</p>
+          <p className="mt-1 max-w-xs text-xs">{loadError}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={mapContainer} className={cn("w-full h-[500px]", className)} />

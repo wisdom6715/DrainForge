@@ -1,23 +1,31 @@
 from enum import Enum
 from typing import Optional
-from uuid import UUID, uuid4
 
 import os
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from dotenv import load_dotenv
+
+# Must run before importing reports_store/admin_auth/notifications, since
+# those read ADMIN_KEY / SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY via
+# os.getenv() — without this, a .env file sits on disk unread and every
+# os.getenv() call sees an empty string.
+load_dotenv()
+
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from . import reports_store
+from .admin_auth import check_admin_key, require_admin_key
 from .notifications import InAppNotificationSink, NotificationEvent, configured_supabase_client, notification_for
 
-app = FastAPI(title="DrainForge API", version="0.1.0", description="Resident and authority drainage reporting service")
+app = FastAPI(title="DrainForge API", version="0.2.0", description="Resident and authority drainage reporting service")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-User-Role"],
+    allow_headers=["Authorization", "Content-Type", "X-User-Role", "X-Admin-Key"],
 )
 
 
@@ -38,58 +46,71 @@ class ReportSeverity(str, Enum):
 
 
 class ReportStatus(str, Enum):
-    RECEIVED = "received"
-    UNDER_REVIEW = "under_review"
-    VERIFIED = "verified"
-    ASSIGNED = "assigned"
-    IN_PROGRESS = "in_progress"
+    """Simplified, two-state lifecycle: a report is PENDING until an admin
+    marks it RESOLVED. There is no separate 'unresolved' status — pending
+    *is* unresolved."""
+
+    PENDING = "pending"
     RESOLVED = "resolved"
-    REJECTED = "rejected"
-    DUPLICATE = "duplicate"
 
 
 class ReportCreate(BaseModel):
+    title: str = Field(max_length=120)
     category: ReportCategory
     severity: ReportSeverity = ReportSeverity.MEDIUM
     description: str = Field(default="", max_length=500)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     address: Optional[str] = Field(default=None, max_length=300)
+    area: Optional[str] = Field(default=None, max_length=120)
     location_accuracy: Optional[float] = Field(default=None, ge=0)
+    # Storage paths the client already uploaded to the "report-evidence"
+    # Supabase bucket (see src/lib/supabase.ts -> uploadEvidence()).
     evidence_paths: list[str] = Field(default_factory=list, max_length=3)
 
 
-class ReportResponse(ReportCreate):
-    id: UUID
+class ReportResponse(BaseModel):
+    id: str
     reference: str
+    title: str
+    area: Optional[str] = None
+    category: ReportCategory
+    severity: ReportSeverity
+    description: str = ""
+    latitude: float
+    longitude: float
+    address: Optional[str] = None
+    location_accuracy: Optional[float] = None
+    image_url: Optional[str] = None
     status: ReportStatus
+    created_at: str
+    resolved_at: Optional[str] = None
+
+
+class ReportListResponse(BaseModel):
+    items: list[ReportResponse]
 
 
 class StatusUpdate(BaseModel):
     status: ReportStatus
-    note: Optional[str] = Field(default=None, max_length=500)
-    assigned_team_id: Optional[UUID] = None
 
 
-class RequestActor(BaseModel):
-    user_id: Optional[str] = None
-    role: str = "resident"
+class AdminLoginRequest(BaseModel):
+    admin_key: str = Field(min_length=1)
 
 
-bearer = HTTPBearer(auto_error=False)
+class MonthlyPoint(BaseModel):
+    month: str
+    count: int
 
 
-def actor_from_headers(x_user_role: Optional[str] = Header(default=None), credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer)) -> RequestActor:
-    if credentials:
-        client = configured_supabase_client()
-        if client:
-            try:
-                user = client.auth.get_user(credentials.credentials).user
-                metadata = user.app_metadata or {}
-                return RequestActor(user_id=str(user.id), role=str(metadata.get("role", "resident")))
-            except Exception as error:
-                raise HTTPException(status_code=401, detail="Invalid Supabase session") from error
-    return RequestActor(role=x_user_role or "resident")
+class AnalyticsResponse(BaseModel):
+    total_reports: int
+    resolved: int
+    pending: int
+    reports_this_month: int
+    resolution_rate: int
+    monthly: list[MonthlyPoint]
 
 
 @app.get("/health")
@@ -98,28 +119,67 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/v1/reports", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
-def create_report(payload: ReportCreate, actor: RequestActor = Depends(actor_from_headers)) -> ReportResponse:
-    report_id = uuid4()
-    reference = f"DF-{report_id.hex[:10].upper()}"
-    response = ReportResponse(id=report_id, reference=reference, status=ReportStatus.RECEIVED, **payload.model_dump())
-    client = configured_supabase_client()
-    if client:
-        row = {"id": str(report_id), "reference": reference, "reporter_id": actor.user_id, **payload.model_dump(exclude={"evidence_paths"})}
-        client.table("reports").insert(row).execute()
-        if payload.evidence_paths:
-            client.table("report_evidence").insert([{"report_id": str(report_id), "storage_path": path} for path in payload.evidence_paths]).execute()
-    InAppNotificationSink(client).send(notification_for(NotificationEvent.REPORT_CREATED, reference), [actor.user_id] if actor.user_id else [])
-    return response
+def create_report(payload: ReportCreate) -> ReportResponse:
+    record = reports_store.create_report(
+        payload.model_dump(exclude={"evidence_paths"}),
+        payload.evidence_paths,
+    )
+    InAppNotificationSink(configured_supabase_client()).send(
+        notification_for(NotificationEvent.REPORT_CREATED, record["reference"]), []
+    )
+    return ReportResponse(**record)
 
 
-@app.get("/api/v1/reports")
-def list_reports(status_filter: Optional[ReportStatus] = None, actor: RequestActor = Depends(actor_from_headers)) -> dict[str, object]:
-    return {"items": [], "status_filter": status_filter, "viewer_role": actor.role}
+@app.get("/api/v1/reports", response_model=ReportListResponse)
+def list_reports(
+    status_filter: Optional[ReportStatus] = Query(default=None, alias="status"),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> ReportListResponse:
+    items = reports_store.list_reports(status=status_filter.value if status_filter else None, limit=limit)
+    return ReportListResponse(items=[ReportResponse(**item) for item in items])
 
 
-@app.patch("/api/v1/reports/{report_id}/status", response_model=StatusUpdate)
-def update_report_status(report_id: UUID, payload: StatusUpdate, actor: RequestActor = Depends(actor_from_headers)) -> StatusUpdate:
-    if actor.role not in {"authority", "admin", "super_admin"}:
-        raise HTTPException(status_code=403, detail="Authority role required")
-    InAppNotificationSink(configured_supabase_client()).send(notification_for(NotificationEvent.REPORT_VERIFIED if payload.status is ReportStatus.VERIFIED else NotificationEvent.REPORT_RESOLVED if payload.status is ReportStatus.RESOLVED else NotificationEvent.REPORT_CREATED, report_id.hex[:10].upper()), [actor.user_id] if actor.user_id else [])
-    return payload
+@app.get("/api/v1/reports/search", response_model=ReportListResponse)
+def search_reports(q: str = Query(..., min_length=1, max_length=120)) -> ReportListResponse:
+    items = reports_store.search_reports(q)
+    return ReportListResponse(items=[ReportResponse(**item) for item in items])
+
+
+@app.get("/api/v1/reports/{reference}", response_model=ReportResponse)
+def get_report(reference: str) -> ReportResponse:
+    record = reports_store.get_report(reference)
+    if not record:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return ReportResponse(**record)
+
+
+@app.patch("/api/v1/reports/{reference}/status", response_model=ReportResponse)
+def update_report_status(reference: str, payload: StatusUpdate, _: str = Depends(require_admin_key)) -> ReportResponse:
+    record = reports_store.update_status(reference, payload.status.value)
+    if not record:
+        raise HTTPException(status_code=404, detail="Report not found")
+    event = NotificationEvent.REPORT_RESOLVED if payload.status is ReportStatus.RESOLVED else NotificationEvent.REPORT_CREATED
+    InAppNotificationSink(configured_supabase_client()).send(notification_for(event, record["reference"]), [])
+    return ReportResponse(**record)
+
+
+@app.post("/api/v1/admin/login")
+def admin_login(payload: AdminLoginRequest) -> dict[str, bool]:
+    if not check_admin_key(payload.admin_key):
+        raise HTTPException(status_code=401, detail="Invalid admin key")
+    return {"ok": True}
+
+
+@app.get("/api/v1/admin/reports", response_model=ReportListResponse)
+def admin_list_reports(
+    status_filter: Optional[ReportStatus] = Query(default=None, alias="status"),
+    limit: int = Query(default=200, ge=1, le=500),
+    _: str = Depends(require_admin_key),
+) -> ReportListResponse:
+    items = reports_store.list_reports(status=status_filter.value if status_filter else None, limit=limit)
+    return ReportListResponse(items=[ReportResponse(**item) for item in items])
+
+
+@app.get("/api/v1/admin/analytics", response_model=AnalyticsResponse)
+def admin_analytics(_: str = Depends(require_admin_key)) -> AnalyticsResponse:
+    return AnalyticsResponse(**reports_store.analytics())
