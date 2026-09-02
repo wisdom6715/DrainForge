@@ -1,7 +1,0 @@
-{
-  "productName": "DrainForge",
-  "pilotCorridor": ["UNILAG", "Akoka", "Bariga", "Iwaya"],
-  "apiPath": "/api/v1",
-  "reportEvidenceBucket": "report-evidence",
-  "authorityRoles": ["authority", "admin", "super_admin"]
-}
